@@ -9,6 +9,8 @@ import '../../../features/outline/providers/outline_provider.dart';
 import '../../../features/outline/widgets/outline_sidebar.dart';
 import '../../../features/search/providers/search_provider.dart';
 import '../../../features/search/widgets/search_bar.dart';
+import '../../../features/settings/providers/settings_provider.dart';
+import '../../../features/settings/widgets/settings_panel.dart';
 import '../../../features/tabs/providers/tabs_provider.dart';
 import '../../../features/tabs/widgets/tab_bar.dart';
 import '../providers/file_provider.dart';
@@ -27,6 +29,7 @@ class MainScreen extends ConsumerStatefulWidget {
 
 class _MainScreenState extends ConsumerState<MainScreen> {
   bool _isOutlineVisible = true;
+  final GlobalKey<WebViewContainerState> _webViewKey = GlobalKey<WebViewContainerState>();
 
   Future<void> _openFile() async {
     final result = await FilePicker.platform.pickFiles(
@@ -52,6 +55,44 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     ref.read(searchProvider.notifier).toggleVisibility();
   }
 
+  void _openSettings() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Consumer(
+        builder: (dialogContext, ref, child) {
+          final settingsAsync = ref.watch(settingsProvider);
+          return settingsAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text('加载设置失败: $e')),
+            data: (settings) => SettingsPanel(
+              settings: settings,
+              onThemeModeChanged: (mode) =>
+                  ref.read(settingsProvider.notifier).setThemeMode(mode),
+              onFontSizeIncrement: () =>
+                  ref.read(settingsProvider.notifier).increaseFontSize(),
+              onFontSizeDecrement: () =>
+                  ref.read(settingsProvider.notifier).decreaseFontSize(),
+              onAutoRefreshChanged: (_) =>
+                  ref.read(settingsProvider.notifier).toggleAutoRefresh(),
+              onShowOutlineChanged: (_) =>
+                  ref.read(settingsProvider.notifier).toggleShowOutline(),
+              onClose: () => Navigator.of(dialogContext).pop(),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// 是否有已加载的 Markdown 文件（用于决定是否显示大纲）
+  bool _hasFileLoaded(AsyncValue<FileState> fileStateAsync) {
+    return fileStateAsync.when(
+      data: (state) => state.status == FileStatus.loaded,
+      loading: () => false,
+      error: (_, __) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final fileStateAsync = ref.watch(fileProvider);
@@ -64,6 +105,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       shortcuts: <ShortcutActivator, Intent>{
         const SingleActivator(LogicalKeyboardKey.keyO, meta: true): const _OpenFileIntent(),
         const SingleActivator(LogicalKeyboardKey.keyF, meta: true): const _ToggleSearchIntent(),
+        const SingleActivator(LogicalKeyboardKey.comma, meta: true): const _OpenSettingsIntent(),
         const SingleActivator(LogicalKeyboardKey.escape): const _CloseSearchIntent(),
       },
       child: Actions(
@@ -77,6 +119,12 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           _ToggleSearchIntent: CallbackAction<_ToggleSearchIntent>(
             onInvoke: (_) {
               _toggleSearch();
+              return null;
+            },
+          ),
+          _OpenSettingsIntent: CallbackAction<_OpenSettingsIntent>(
+            onInvoke: (_) {
+              _openSettings();
               return null;
             },
           ),
@@ -139,8 +187,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               Expanded(
                 child: Row(
                   children: [
-                    // 大纲侧边栏
-                    if (_isOutlineVisible)
+                    // 大纲侧边栏（仅在有文件加载时显示）
+                    if (_isOutlineVisible && _hasFileLoaded(fileStateAsync))
                       OutlineSidebar(
                         headings: outlineState.headings,
                         activeHeadingId: outlineState.activeHeadingId,
@@ -148,6 +196,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                         onToggleCollapse: _toggleOutline,
                         onHeadingTap: (heading) {
                           ref.read(outlineProvider.notifier).setActiveHeading(heading.id);
+                          _webViewKey.currentState?.scrollToHeading(heading.id);
                         },
                       ),
                     // 内容区
@@ -194,6 +243,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         final searchState = ref.watch(searchProvider);
         debugPrint('[MainScreen] Rendering loaded state, content length: ${fileState.content?.length ?? 0}');
         return WebViewContainer(
+          key: _webViewKey,
           content: fileState.content ?? '',
           isDarkMode: isDark,
           searchQuery: searchState.query,
@@ -251,6 +301,10 @@ class _OpenFileIntent extends Intent {
 
 class _ToggleSearchIntent extends Intent {
   const _ToggleSearchIntent();
+}
+
+class _OpenSettingsIntent extends Intent {
+  const _OpenSettingsIntent();
 }
 
 class _CloseSearchIntent extends Intent {

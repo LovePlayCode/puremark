@@ -285,6 +285,7 @@ class WebViewContainerState extends State<WebViewContainer> {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it@14/dist/markdown-it.min.js"></script>
   <style>
     ${_getCssContent()}
   </style>
@@ -436,10 +437,14 @@ li {
   margin-bottom: 0.25em;
 }
 
+.table-wrapper {
+  overflow-x: auto;
+  margin-bottom: 1em;
+}
 table {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 1em;
+  min-width: 100%;
 }
 
 th, td {
@@ -510,142 +515,30 @@ img {
   String _getJavaScriptContent() {
     // 使用 raw string 避免 $ 符号转义问题
     return r'''
-// 简单的 Markdown 解析器
-var mermaidCounter = 0;
-var codeBlocks = [];
-var inlineCodeBlocks = [];
+// markdown-it 解析器（CommonMark/GFM）
+var md = window.markdownit({ html: true, linkify: true, typographer: true });
 
-function parseMarkdown(text) {
-  if (!text) return '';
-  
-  let html = text;
-  mermaidCounter = 0;
-  codeBlocks = [];
-  inlineCodeBlocks = [];
-  
-  // 第一步：提取所有代码块并替换为占位符
-  // 处理 ``` 代码块（支持有无语言标识）
-  html = html.replace(/```(\w*)\s*\n([\s\S]*?)```/g, function(match, lang, code) {
-    const index = codeBlocks.length;
-    let replacement;
-    
-    // Mermaid 图表特殊处理
-    if (lang === 'mermaid') {
-      mermaidCounter++;
-      replacement = '<div class="mermaid" id="mermaid-' + mermaidCounter + '">' + code.trim() + '</div>';
-    } else {
-      const langClass = lang ? ' class="language-' + lang + '"' : '';
-      replacement = '<pre><code' + langClass + '>' + escapeHtml(code.trim()) + '</code></pre>';
-    }
-    
-    codeBlocks.push(replacement);
-    return '%%CODEBLOCK_' + index + '%%';
+function postProcessContent(contentEl) {
+  // 为标题添加 id，供大纲与滚动使用
+  contentEl.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(function(h) {
+    if (!h.id) h.id = generateHeadingId(h.textContent);
   });
-  
-  // 第二步：提取行内代码并替换为占位符
-  html = html.replace(/`([^`\n]+)`/g, function(match, code) {
-    const index = inlineCodeBlocks.length;
-    inlineCodeBlocks.push('<code>' + escapeHtml(code) + '</code>');
-    return '%%INLINECODE_' + index + '%%';
+  // 将 markdown-it 输出的 language-mermaid 代码块替换为 div.mermaid，供 mermaid.run() 渲染
+  contentEl.querySelectorAll('pre > code.language-mermaid').forEach(function(code) {
+    var pre = code.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = code.textContent;
+    pre.parentNode.replaceChild(div, pre);
   });
-  
-  // 第三步：处理其他 Markdown 语法
-  
-  // 标题 (同时生成 ID)
-  html = html.replace(/^#{6}\s+(.*)$/gm, function(match, text) {
-    const id = generateHeadingId(text);
-    return '<h6 id="' + id + '">' + text + '</h6>';
+  // 链接点击交由 Flutter 处理
+  contentEl.querySelectorAll('a[href]').forEach(function(a) {
+    var url = a.getAttribute('href');
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      handleLinkClick(e, url);
+    });
   });
-  html = html.replace(/^#{5}\s+(.*)$/gm, function(match, text) {
-    const id = generateHeadingId(text);
-    return '<h5 id="' + id + '">' + text + '</h5>';
-  });
-  html = html.replace(/^#{4}\s+(.*)$/gm, function(match, text) {
-    const id = generateHeadingId(text);
-    return '<h4 id="' + id + '">' + text + '</h4>';
-  });
-  html = html.replace(/^#{3}\s+(.*)$/gm, function(match, text) {
-    const id = generateHeadingId(text);
-    return '<h3 id="' + id + '">' + text + '</h3>';
-  });
-  html = html.replace(/^#{2}\s+(.*)$/gm, function(match, text) {
-    const id = generateHeadingId(text);
-    return '<h2 id="' + id + '">' + text + '</h2>';
-  });
-  html = html.replace(/^#{1}\s+(.*)$/gm, function(match, text) {
-    const id = generateHeadingId(text);
-    return '<h1 id="' + id + '">' + text + '</h1>';
-  });
-  
-  // 粗体和斜体
-  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  html = html.replace(/___(.+?)___/g, '<strong><em>$1</em></strong>');
-  html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
-  html = html.replace(/_(.+?)_/g, '<em>$1</em>');
-  
-  // 删除线
-  html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
-  
-  // 链接
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" onclick="handleLinkClick(event, \'$2\')">$1</a>');
-  
-  // 图片
-  html = html.replace(/!\[([^\]]*?)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
-  
-  // 引用
-  html = html.replace(/^>\s+(.*)$/gm, '<blockquote>$1</blockquote>');
-  
-  // 水平线
-  html = html.replace(/^([-*_]){3,}$/gm, '<hr>');
-  
-  // 无序列表
-  html = html.replace(/^[*\-+]\s+(.*)$/gm, '<li>$1</li>');
-  
-  // 有序列表
-  html = html.replace(/^\d+\.\s+(.*)$/gm, '<li>$1</li>');
-  
-  // 任务列表
-  html = html.replace(/<li>\[x\]\s+(.*)$/gmi, '<li class="task-list-item"><input type="checkbox" checked disabled>$1');
-  html = html.replace(/<li>\[ \]\s+(.*)$/gm, '<li class="task-list-item"><input type="checkbox" disabled>$1');
-  
-  // 段落 (换行)
-  html = html.replace(/\n\n/g, '</p><p>');
-  html = '<p>' + html + '</p>';
-  
-  // 清理空段落
-  html = html.replace(/<p><\/p>/g, '');
-  html = html.replace(/<p>(<h[1-6])/g, '$1');
-  html = html.replace(/(<\/h[1-6]>)<\/p>/g, '$1');
-  html = html.replace(/<p>(%%CODEBLOCK)/g, '$1');
-  html = html.replace(/(%%)<\/p>/g, '$1');
-  html = html.replace(/<p>(<blockquote)/g, '$1');
-  html = html.replace(/(<\/blockquote>)<\/p>/g, '$1');
-  html = html.replace(/<p>(<hr>)/g, '$1');
-  html = html.replace(/(<hr>)<\/p>/g, '$1');
-  html = html.replace(/<p>(<li)/g, '<ul>$1');
-  html = html.replace(/(<\/li>)<\/p>/g, '$1</ul>');
-  html = html.replace(/<p>(<div class="mermaid")/g, '$1');
-  html = html.replace(/(<\/div>)<\/p>/g, '$1');
-  
-  // 第四步：恢复代码块
-  for (let i = 0; i < codeBlocks.length; i++) {
-    html = html.replace('%%CODEBLOCK_' + i + '%%', codeBlocks[i]);
-  }
-  
-  // 第五步：恢复行内代码
-  for (let i = 0; i < inlineCodeBlocks.length; i++) {
-    html = html.replace('%%INLINECODE_' + i + '%%', inlineCodeBlocks[i]);
-  }
-  
-  return html;
-}
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 function generateHeadingId(text) {
@@ -656,7 +549,8 @@ function generateHeadingId(text) {
 
 async function updateMarkdown(content) {
   const contentEl = document.getElementById('content');
-  contentEl.innerHTML = parseMarkdown(content);
+  contentEl.innerHTML = md.render(content);
+  postProcessContent(contentEl);
   
   // 重置搜索的原始内容缓存
   resetOriginalContent();

@@ -172,7 +172,7 @@ class SettingsPanel extends StatelessWidget {
             children: [
               _buildThemeOption(
                 key: const Key('themeDark'),
-                label: 'Dark',
+                label: '深色',
                 mode: ThemeMode.dark,
                 isSelected: settings.themeMode == ThemeMode.dark,
                 textColor: textColor,
@@ -180,7 +180,7 @@ class SettingsPanel extends StatelessWidget {
               ),
               _buildThemeOption(
                 key: const Key('themeLight'),
-                label: 'Light',
+                label: '亮色',
                 mode: ThemeMode.light,
                 isSelected: settings.themeMode == ThemeMode.light,
                 textColor: textColor,
@@ -188,7 +188,7 @@ class SettingsPanel extends StatelessWidget {
               ),
               _buildThemeOption(
                 key: const Key('themeSystem'),
-                label: 'System',
+                label: '跟随系统',
                 mode: ThemeMode.system,
                 isSelected: settings.themeMode == ThemeMode.system,
                 textColor: textColor,

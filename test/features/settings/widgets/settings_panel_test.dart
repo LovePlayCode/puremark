@@ -97,12 +97,12 @@ void main() {
         await tester.pumpWidget(buildTestWidget());
 
         // Assert
-        expect(find.text('Dark'), findsOneWidget);
-        expect(find.text('Light'), findsOneWidget);
-        expect(find.text('System'), findsOneWidget);
+        expect(find.text('深色'), findsOneWidget);
+        expect(find.text('亮色'), findsOneWidget);
+        expect(find.text('跟随系统'), findsOneWidget);
       });
 
-      testWidgets('点击 Dark 应该触发回调', (tester) async {
+      testWidgets('点击深色应该触发回调', (tester) async {
         // Arrange
         ThemeMode? selectedMode;
 
@@ -117,7 +117,7 @@ void main() {
         expect(selectedMode, equals(ThemeMode.dark));
       });
 
-      testWidgets('点击 Light 应该触发回调', (tester) async {
+      testWidgets('点击亮色应该触发回调', (tester) async {
         // Arrange
         ThemeMode? selectedMode;
 
@@ -132,7 +132,7 @@ void main() {
         expect(selectedMode, equals(ThemeMode.light));
       });
 
-      testWidgets('点击 System 应该触发回调', (tester) async {
+      testWidgets('点击跟随系统应该触发回调', (tester) async {
         // Arrange
         ThemeMode? selectedMode;
 
