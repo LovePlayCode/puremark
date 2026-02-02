@@ -1,0 +1,60 @@
+name: puremark
+description: "An immersive Markdown previewer for macOS and Windows"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
+
+  # Window Management
+  window_manager: ^0.3.8
+
+  # WebView
+  flutter_inappwebview: ^6.0.0
+
+  # File Operations
+  file_picker: ^6.1.1
+  watcher: ^1.1.0
+  path: ^1.9.0
+  path_provider: ^2.1.2
+
+  # Storage
+  shared_preferences: ^2.2.2
+
+  # Data Classes
+  freezed_annotation: ^2.4.1
+  json_annotation: ^4.8.1
+
+  # Utilities
+  collection: ^1.18.0
+  uuid: ^4.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # Linting
+  flutter_lints: ^6.0.0
+
+  # Code Generation
+  build_runner: ^2.4.8
+  riverpod_generator: ^2.4.0
+  freezed: ^2.4.7
+  json_serializable: ^6.7.1
+
+  # Testing
+  mocktail: ^1.0.3
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/web/
