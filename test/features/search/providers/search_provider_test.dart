@@ -553,5 +553,201 @@ void main() {
         expect(container.read(searchProvider).currentMatch, equals(1));
       });
     });
+
+    group('竞态条件', () {
+      test('快速连续调用 setQuery 后，状态应该反映最后一次调用', () {
+        // Arrange
+        final notifier = container.read(searchProvider.notifier);
+
+        // Act - 模拟快速连续调用
+        notifier.setQuery('a');
+        notifier.setQuery('ab');
+        notifier.setQuery('abc');
+        notifier.setQuery('abcd');
+
+        // Assert - 只有最后一次的 query 被保留
+        final state = container.read(searchProvider);
+        expect(state.query, equals('abcd'));
+      });
+
+      test('setQuery 相同值时不应该触发状态更新', () {
+        // Arrange
+        var changeCount = 0;
+        container.listen<SearchState>(
+          searchProvider,
+          (previous, next) {
+            changeCount++;
+          },
+        );
+
+        // Act
+        container.read(searchProvider.notifier).setQuery('test');
+        container.read(searchProvider.notifier).setQuery('test'); // 相同值
+        container.read(searchProvider.notifier).setQuery('test'); // 相同值
+
+        // Assert - 只应该触发一次更新
+        expect(changeCount, equals(1));
+      });
+
+      test('setMatches 带版本号验证（为重构做准备）', () {
+        // 注意：当前实现没有版本号机制，此测试验证基础行为
+        // 未来重构可添加 queryVersion 参数来防止竞态条件
+        //
+        // 预期重构后的 API:
+        // void setMatches(int totalMatches, {int? currentMatch, int? queryVersion});
+        //
+        // 竞态场景:
+        // 1. setQuery('a') -> queryVersion = 1
+        // 2. setQuery('ab') -> queryVersion = 2
+        // 3. 旧搜索返回 setMatches(5, queryVersion: 1) -> 应被忽略
+        // 4. 新搜索返回 setMatches(3, queryVersion: 2) -> 应被接受
+
+        // Arrange
+        final notifier = container.read(searchProvider.notifier);
+        notifier.setQuery('first');
+
+        // Act - 模拟搜索结果返回
+        notifier.setMatches(10, currentMatch: 3);
+
+        // Assert
+        final state = container.read(searchProvider);
+        expect(state.totalMatches, equals(10));
+        expect(state.currentMatch, equals(3));
+      });
+
+      test('setQuery 后 setMatches 应该正确关联', () {
+        // Arrange
+        final notifier = container.read(searchProvider.notifier);
+
+        // Act
+        notifier.setQuery('search term');
+        notifier.setMatches(15, currentMatch: 5);
+
+        // Assert
+        final state = container.read(searchProvider);
+        expect(state.query, equals('search term'));
+        expect(state.totalMatches, equals(15));
+        expect(state.currentMatch, equals(5));
+      });
+    });
+
+    group('状态边界', () {
+      test('setMatches 的 currentMatch 超出 totalMatches 时应该保存原值', () {
+        // 注意：当前实现不验证 currentMatch 范围，
+        // 此测试记录当前行为，为未来添加验证做准备
+        
+        // Arrange
+        final notifier = container.read(searchProvider.notifier);
+
+        // Act - currentMatch (10) 超出 totalMatches (5)
+        notifier.setMatches(5, currentMatch: 10);
+
+        // Assert - 当前行为：保存原值（未验证）
+        // 理想行为：currentMatch 应该被限制在 [1, totalMatches] 范围内
+        final state = container.read(searchProvider);
+        expect(state.totalMatches, equals(5));
+        // 当前实现允许 currentMatch > totalMatches
+        expect(state.currentMatch, equals(10));
+      });
+
+      test('setMatches 的 totalMatches 为负数时应该被 clamp 为 0', () {
+        // Arrange
+        final notifier = container.read(searchProvider.notifier);
+
+        // Act
+        notifier.setMatches(-5);
+
+        // Assert - 负数应该被 clamp 到 0
+        final state = container.read(searchProvider);
+        expect(state.totalMatches, equals(0));
+        expect(state.currentMatch, equals(0)); // 无匹配时 currentMatch 也应为 0
+      });
+
+      test('setMatches 的 currentMatch 为负数时应该保存原值', () {
+        // 注意：当前实现不验证 currentMatch 范围，
+        // 此测试记录当前行为，为未来添加验证做准备
+        
+        // Arrange
+        final notifier = container.read(searchProvider.notifier);
+
+        // Act
+        notifier.setMatches(10, currentMatch: -3);
+
+        // Assert - 当前行为：保存原值（未验证）
+        // 理想行为：负数应该被处理（抛出异常或设为 0/1）
+        final state = container.read(searchProvider);
+        expect(state.totalMatches, equals(10));
+        expect(state.currentMatch, equals(-3));
+      });
+
+      test('setMatches 的 currentMatch 为 0 且 totalMatches > 0 时应该保存原值', () {
+        // Arrange
+        final notifier = container.read(searchProvider.notifier);
+
+        // Act
+        notifier.setMatches(10, currentMatch: 0);
+
+        // Assert - 当前行为：保存原值
+        // 理想行为：可能应该自动设为 1
+        final state = container.read(searchProvider);
+        expect(state.totalMatches, equals(10));
+        expect(state.currentMatch, equals(0));
+      });
+    });
+
+    group('加载状态（为重构做准备）', () {
+      // 注意：当前 SearchState 没有 isLoading 字段
+      // 这些测试是占位符，为未来添加加载状态做准备
+      //
+      // 预期重构后的 SearchState:
+      // class SearchState {
+      //   final String query;
+      //   final int totalMatches;
+      //   final int currentMatch;
+      //   final bool isVisible;
+      //   final bool isLoading;  // 新增
+      // }
+
+      test('TODO: setQuery 后 isLoading 应该变为 true', () {
+        // 占位测试 - 当前实现没有 isLoading 字段
+        //
+        // 预期行为:
+        // notifier.setQuery('test');
+        // expect(state.isLoading, isTrue);
+        
+        // 当前只验证 setQuery 正常工作
+        container.read(searchProvider.notifier).setQuery('test');
+        expect(container.read(searchProvider).query, equals('test'));
+      });
+
+      test('TODO: setMatches 后 isLoading 应该变为 false', () {
+        // 占位测试 - 当前实现没有 isLoading 字段
+        //
+        // 预期行为:
+        // notifier.setQuery('test');
+        // expect(state.isLoading, isTrue);
+        // notifier.setMatches(5);
+        // expect(state.isLoading, isFalse);
+        
+        // 当前只验证 setMatches 正常工作
+        container.read(searchProvider.notifier).setQuery('test');
+        container.read(searchProvider.notifier).setMatches(5);
+        expect(container.read(searchProvider).totalMatches, equals(5));
+      });
+
+      test('TODO: clearSearch 后 isLoading 应该变为 false', () {
+        // 占位测试 - 当前实现没有 isLoading 字段
+        //
+        // 预期行为:
+        // notifier.setQuery('test');
+        // notifier.clearSearch();
+        // expect(state.isLoading, isFalse);
+        
+        // 当前只验证 clearSearch 正常工作
+        container.read(searchProvider.notifier).setQuery('test');
+        container.read(searchProvider.notifier).clearSearch();
+        expect(container.read(searchProvider).query, equals(''));
+      });
+    });
   });
 }

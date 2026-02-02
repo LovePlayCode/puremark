@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
+import '../../search/models/search_state.dart';
+
 /// Markdown 大纲标题项。
 ///
 /// 用于表示从 Markdown 内容中提取的标题信息。
@@ -61,8 +63,13 @@ class WebViewContainer extends StatefulWidget {
     super.key,
     this.content = '',
     this.isDarkMode = true,
+    this.searchQuery = '',
+    this.currentMatch = 0,
+    this.searchOptions = const SearchOptions(),
+    this.searchVersion = 0,
     this.onOutlineGenerated,
     this.onLinkClicked,
+    this.onSearchResults,
     this.scrollController,
   });
 
@@ -72,11 +79,26 @@ class WebViewContainer extends StatefulWidget {
   /// 是否为暗色模式
   final bool isDarkMode;
 
+  /// 搜索查询词
+  final String searchQuery;
+
+  /// 当前匹配索引
+  final int currentMatch;
+
+  /// 搜索选项
+  final SearchOptions searchOptions;
+
+  /// 搜索版本号（用于防止竞态条件）
+  final int searchVersion;
+
   /// 大纲生成回调
   final void Function(List<OutlineItem> items)? onOutlineGenerated;
 
   /// 链接点击回调
   final void Function(String url)? onLinkClicked;
+
+  /// 搜索结果回调，包含匹配数量和搜索版本号
+  final void Function(int totalMatches, int version)? onSearchResults;
 
   /// 滚动控制器
   final ScrollController? scrollController;
@@ -114,6 +136,20 @@ class WebViewContainerState extends State<WebViewContainer> {
         debugPrint('[WebView] Saved pending content, length=${_pendingContent.length}');
       }
     }
+    
+    // 搜索查询或选项变化时执行搜索
+    if (oldWidget.searchQuery != widget.searchQuery ||
+        oldWidget.searchOptions != widget.searchOptions) {
+      _performSearch();
+    }
+    
+    // 当前匹配变化时跳转
+    if (oldWidget.currentMatch != widget.currentMatch) {
+      debugPrint('[WebView] currentMatch changed: ${oldWidget.currentMatch} -> ${widget.currentMatch}');
+      if (widget.currentMatch > 0) {
+        _goToMatch(widget.currentMatch);
+      }
+    }
   }
   
   void _updateTheme() {
@@ -122,6 +158,45 @@ class WebViewContainerState extends State<WebViewContainer> {
     final isDark = widget.isDarkMode;
     _webViewController?.evaluateJavascript(
       source: 'setTheme(${isDark ? "true" : "false"});',
+    );
+  }
+  
+  void _performSearch() {
+    if (_webViewController == null || !_isWebViewReady) return;
+    
+    final query = widget.searchQuery;
+    final options = widget.searchOptions;
+    final version = widget.searchVersion;
+    
+    if (query.isEmpty) {
+      _webViewController?.evaluateJavascript(source: 'clearSearch();');
+      // 延迟到构建完成后更新状态
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onSearchResults?.call(0, version);
+      });
+    } else {
+      final escapedQuery = query
+          .replaceAll('\\', '\\\\')
+          .replaceAll('"', '\\"')
+          .replaceAll('\n', '\\n');
+      
+      // 传递搜索选项和版本号
+      _webViewController?.evaluateJavascript(
+        source: '''performSearch("$escapedQuery", {
+          caseSensitive: ${options.caseSensitive},
+          wholeWord: ${options.wholeWord},
+          useRegex: ${options.useRegex},
+          version: $version
+        });''',
+      );
+    }
+  }
+  
+  void _goToMatch(int matchIndex) {
+    if (_webViewController == null || !_isWebViewReady) return;
+    debugPrint('[WebView] _goToMatch called with index: $matchIndex');
+    _webViewController?.evaluateJavascript(
+      source: 'goToMatch($matchIndex);',
     );
   }
 
@@ -417,6 +492,18 @@ img {
   max-width: 100%;
   height: auto;
 }
+
+/* 搜索高亮样式 */
+.search-highlight {
+  background-color: rgba(255, 213, 79, 0.4);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.search-highlight-current {
+  background-color: rgba(255, 152, 0, 0.6);
+  outline: 2px solid #FF9800;
+}
 ''';
   }
 
@@ -571,6 +658,9 @@ async function updateMarkdown(content) {
   const contentEl = document.getElementById('content');
   contentEl.innerHTML = parseMarkdown(content);
   
+  // 重置搜索的原始内容缓存
+  resetOriginalContent();
+  
   // 渲染 Mermaid 图表
   await renderMermaidDiagrams();
   
@@ -657,6 +747,118 @@ async function setTheme(isDark) {
   }
 }
 
+// 搜索相关变量
+var searchMatches = [];
+var currentSearchIndex = 0;
+var originalContent = '';
+
+function performSearch(query, options) {
+  // options: { caseSensitive, wholeWord, useRegex, version }
+  clearSearch();
+  
+  if (!query || query.trim() === '') {
+    notifySearchResults(0, options ? options.version : 0);
+    return;
+  }
+  
+  const contentEl = document.getElementById('content');
+  if (!contentEl) {
+    notifySearchResults(0, options ? options.version : 0);
+    return;
+  }
+  
+  // 保存原始内容（如果还没保存）
+  if (!originalContent) {
+    originalContent = contentEl.innerHTML;
+  }
+  
+  let pattern;
+  if (options && options.useRegex) {
+    try {
+      pattern = query;
+    } catch (e) {
+      console.error('Invalid regex:', e);
+      notifySearchResults(0, options.version);
+      return;
+    }
+  } else {
+    pattern = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+  
+  // 整词匹配
+  if (options && options.wholeWord) {
+    pattern = '\\b' + pattern + '\\b';
+  }
+  
+  const flags = (options && options.caseSensitive) ? 'g' : 'gi';
+  
+  try {
+    const regex = new RegExp('(' + pattern + ')', flags);
+    
+    let matchCount = 0;
+    const newContent = contentEl.innerHTML.replace(regex, function(match) {
+      matchCount++;
+      return '<span class="search-highlight" data-match-index="' + matchCount + '">' + match + '</span>';
+    });
+    
+    contentEl.innerHTML = newContent;
+    searchMatches = Array.from(document.querySelectorAll('.search-highlight'));
+    
+    console.log('[JS] performSearch found', searchMatches.length, 'matches');
+    notifySearchResults(searchMatches.length, options ? options.version : 0);
+    
+    if (searchMatches.length > 0) {
+      currentSearchIndex = 0;
+      searchMatches[0].classList.add('search-highlight-current');
+      searchMatches[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  } catch (e) {
+    console.error('Search error:', e);
+    notifySearchResults(0, options ? options.version : 0);
+  }
+}
+
+function clearSearch() {
+  const contentEl = document.getElementById('content');
+  if (contentEl && originalContent) {
+    contentEl.innerHTML = originalContent;
+  }
+  searchMatches = [];
+  currentSearchIndex = 0;
+}
+
+function resetOriginalContent() {
+  originalContent = '';
+}
+
+function goToMatch(matchIndex) {
+  console.log('[JS] goToMatch called with:', matchIndex, 'total matches:', searchMatches.length);
+  if (searchMatches.length === 0) return;
+  
+  // 边界检查和循环
+  let newIndex = matchIndex - 1; // 转换为0索引
+  if (newIndex < 0) newIndex = searchMatches.length - 1;
+  if (newIndex >= searchMatches.length) newIndex = 0;
+  
+  console.log('[JS] Moving from index', currentSearchIndex, 'to', newIndex);
+  
+  // 移除之前的当前匹配样式
+  if (currentSearchIndex >= 0 && currentSearchIndex < searchMatches.length) {
+    searchMatches[currentSearchIndex].classList.remove('search-highlight-current');
+  }
+  
+  // 设置新的当前匹配
+  currentSearchIndex = newIndex;
+  searchMatches[currentSearchIndex].classList.add('search-highlight-current');
+  searchMatches[currentSearchIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function notifySearchResults(count, version) {
+  if (window.flutter_inappwebview) {
+    window.flutter_inappwebview.callHandler('onSearchResults', count, version);
+  }
+}
+
 // 初始化时通知 Flutter WebView 已就绪
 document.addEventListener('DOMContentLoaded', function() {
   if (window.flutter_inappwebview) {
@@ -727,6 +929,22 @@ document.addEventListener('DOMContentLoaded', function() {
               }
               // 处理待渲染的内容或当前内容
               _updateContent();
+            },
+          );
+
+          // 注册 JavaScript handler: 搜索结果
+          controller.addJavaScriptHandler(
+            handlerName: 'onSearchResults',
+            callback: (args) {
+              debugPrint('[WebView] onSearchResults callback, args: $args');
+              if (args.isNotEmpty) {
+                final totalMatches = args[0] as int;
+                final version = args.length > 1 ? args[1] as int : widget.searchVersion;
+                // 延迟到构建完成后更新状态，避免在构建期间修改 Provider
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  widget.onSearchResults?.call(totalMatches, version);
+                });
+              }
             },
           );
         },

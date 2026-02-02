@@ -5,7 +5,7 @@ import '../models/search_state.dart';
 
 /// 搜索栏 Widget。
 ///
-/// 提供搜索输入框、匹配计数显示和导航按钮。
+/// 提供搜索输入框、搜索选项、匹配计数显示和导航按钮。
 ///
 /// 使用示例：
 /// ```dart
@@ -14,6 +14,8 @@ import '../models/search_state.dart';
 ///   onQueryChanged: (query) => handleSearch(query),
 ///   onNextMatch: () => goToNextMatch(),
 ///   onPreviousMatch: () => goToPreviousMatch(),
+///   onToggleCaseSensitive: () => toggleCaseSensitive(),
+///   onToggleWholeWord: () => toggleWholeWord(),
 ///   onClose: () => hideSearchBar(),
 /// )
 /// ```
@@ -25,6 +27,8 @@ class SearchBarWidget extends StatefulWidget {
     this.onQueryChanged,
     this.onNextMatch,
     this.onPreviousMatch,
+    this.onToggleCaseSensitive,
+    this.onToggleWholeWord,
     this.onClose,
   });
 
@@ -39,6 +43,12 @@ class SearchBarWidget extends StatefulWidget {
 
   /// 上一个匹配回调
   final VoidCallback? onPreviousMatch;
+
+  /// 大小写敏感切换回调
+  final VoidCallback? onToggleCaseSensitive;
+
+  /// 整词匹配切换回调
+  final VoidCallback? onToggleWholeWord;
 
   /// 关闭回调
   final VoidCallback? onClose;
@@ -66,7 +76,9 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
   @override
   void didUpdateWidget(SearchBarWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.searchState.query != widget.searchState.query) {
+    // 只有当外部状态变化且与当前输入不同时才更新
+    if (oldWidget.searchState.query != widget.searchState.query &&
+        widget.searchState.query != _controller.text) {
       _controller.text = widget.searchState.query;
     }
   }
@@ -78,18 +90,24 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
     super.dispose();
   }
 
-  void _handleKeyEvent(KeyEvent event) {
-    if (event is KeyDownEvent) {
-      if (event.logicalKey == LogicalKeyboardKey.enter) {
-        if (HardwareKeyboard.instance.isShiftPressed) {
-          widget.onPreviousMatch?.call();
-        } else {
-          widget.onNextMatch?.call();
-        }
-      } else if (event.logicalKey == LogicalKeyboardKey.escape) {
-        widget.onClose?.call();
+  void _onTextChanged(String value) {
+    // 直接调用回调，防抖在 Provider 层处理
+    widget.onQueryChanged?.call(value);
+  }
+
+  KeyEventResult _handleKeyEvent(KeyDownEvent event) {
+    if (event.logicalKey == LogicalKeyboardKey.enter) {
+      if (HardwareKeyboard.instance.isShiftPressed) {
+        widget.onPreviousMatch?.call();
+      } else {
+        widget.onNextMatch?.call();
       }
+      return KeyEventResult.handled;
+    } else if (event.logicalKey == LogicalKeyboardKey.escape) {
+      widget.onClose?.call();
+      return KeyEventResult.handled;
     }
+    return KeyEventResult.ignored;
   }
 
   @override
@@ -106,10 +124,16 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
         isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
     final borderColor =
         isDark ? AppColors.darkBorderPrimary : AppColors.lightBorderPrimary;
+    final accentColor =
+        isDark ? AppColors.accentPrimary : AppColors.lightAccentPrimary;
 
-    return KeyboardListener(
-      focusNode: FocusNode(),
-      onKeyEvent: _handleKeyEvent,
+    return Focus(
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent) {
+          return _handleKeyEvent(event);
+        }
+        return KeyEventResult.ignored;
+      },
       child: Container(
         key: const Key('searchBar'),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -145,23 +169,55 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
                   isDense: true,
                   contentPadding: EdgeInsets.zero,
                 ),
-                onChanged: widget.onQueryChanged,
-                onSubmitted: (_) => widget.onNextMatch?.call(),
+                onChanged: _onTextChanged,
+                onSubmitted: (_) {
+                  widget.onNextMatch?.call();
+                },
               ),
             ),
 
-            // 匹配计数
+            // 匹配计数或加载指示器
             if (widget.searchState.query.isNotEmpty) ...[
               const SizedBox(width: 8),
-              Text(
-                widget.searchState.matchCountText,
-                key: const Key('matchCount'),
-                style: TextStyle(
-                  color: secondaryTextColor,
-                  fontSize: 12,
+              if (widget.searchState.isLoading)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                  ),
+                )
+              else
+                Text(
+                  widget.searchState.matchCountText,
+                  key: const Key('matchCount'),
+                  style: TextStyle(
+                    color: secondaryTextColor,
+                    fontSize: 12,
+                  ),
                 ),
-              ),
             ],
+
+            // 搜索选项按钮
+            const SizedBox(width: 4),
+            _buildToggleButton(
+              key: const Key('caseSensitiveButton'),
+              label: 'Aa',
+              tooltip: '大小写敏感',
+              isActive: widget.searchState.options.caseSensitive,
+              onPressed: widget.onToggleCaseSensitive,
+              color: secondaryTextColor,
+              activeColor: accentColor,
+            ),
+            _buildToggleButton(
+              key: const Key('wholeWordButton'),
+              label: 'W',
+              tooltip: '整词匹配',
+              isActive: widget.searchState.options.wholeWord,
+              onPressed: widget.onToggleWholeWord,
+              color: secondaryTextColor,
+              activeColor: accentColor,
+            ),
 
             // 导航按钮
             if (widget.searchState.hasMatches) ...[
@@ -215,6 +271,43 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
         minHeight: 28,
       ),
       splashRadius: 14,
+    );
+  }
+
+  Widget _buildToggleButton({
+    required Key key,
+    required String label,
+    required String tooltip,
+    required bool isActive,
+    required VoidCallback? onPressed,
+    required Color color,
+    required Color activeColor,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        key: key,
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(4),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          decoration: BoxDecoration(
+            color: isActive ? activeColor.withOpacity(0.2) : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+              color: isActive ? activeColor : Colors.transparent,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isActive ? activeColor : color,
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

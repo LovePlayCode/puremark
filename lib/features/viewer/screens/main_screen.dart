@@ -48,6 +48,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   }
 
   void _toggleSearch() {
+    debugPrint('[MainScreen] _toggleSearch called');
     ref.read(searchProvider.notifier).toggleVisibility();
   }
 
@@ -59,23 +60,42 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     final searchState = ref.watch(searchProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      backgroundColor: isDark
-          ? AppColors.darkBgPrimary
-          : AppColors.lightBgPrimary,
-      body: CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.keyO, meta: true): _openFile,
-          const SingleActivator(LogicalKeyboardKey.keyF, meta: true): _toggleSearch,
-          const SingleActivator(LogicalKeyboardKey.escape): () {
-            if (searchState.isVisible) {
-              ref.read(searchProvider.notifier).toggleVisibility();
-            }
-          },
+    return Shortcuts(
+      shortcuts: <ShortcutActivator, Intent>{
+        const SingleActivator(LogicalKeyboardKey.keyO, meta: true): const _OpenFileIntent(),
+        const SingleActivator(LogicalKeyboardKey.keyF, meta: true): const _ToggleSearchIntent(),
+        const SingleActivator(LogicalKeyboardKey.escape): const _CloseSearchIntent(),
+      },
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          _OpenFileIntent: CallbackAction<_OpenFileIntent>(
+            onInvoke: (_) {
+              _openFile();
+              return null;
+            },
+          ),
+          _ToggleSearchIntent: CallbackAction<_ToggleSearchIntent>(
+            onInvoke: (_) {
+              _toggleSearch();
+              return null;
+            },
+          ),
+          _CloseSearchIntent: CallbackAction<_CloseSearchIntent>(
+            onInvoke: (_) {
+              if (searchState.isVisible) {
+                ref.read(searchProvider.notifier).toggleVisibility();
+              }
+              return null;
+            },
+          ),
         },
-        child: Focus(
-          autofocus: true,
-          child: Column(
+        child: Scaffold(
+          backgroundColor: isDark
+              ? AppColors.darkBgPrimary
+              : AppColors.lightBgPrimary,
+          body: Focus(
+            autofocus: true,
+            child: Column(
             children: [
               // 标签栏
               StandaloneTabBar(
@@ -107,6 +127,13 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                     ref.read(searchProvider.notifier).previousMatch();
                   },
                   onClose: _toggleSearch,
+                  // 搜索选项回调
+                  onToggleCaseSensitive: () {
+                    ref.read(searchProvider.notifier).toggleCaseSensitive();
+                  },
+                  onToggleWholeWord: () {
+                    ref.read(searchProvider.notifier).toggleWholeWord();
+                  },
                 ),
               // 主内容区
               Expanded(
@@ -147,8 +174,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildContent(FileState fileState) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -163,10 +191,15 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         return const LoadingState();
 
       case FileStatus.loaded:
+        final searchState = ref.watch(searchProvider);
         debugPrint('[MainScreen] Rendering loaded state, content length: ${fileState.content?.length ?? 0}');
         return WebViewContainer(
           content: fileState.content ?? '',
           isDarkMode: isDark,
+          searchQuery: searchState.query,
+          currentMatch: searchState.currentMatch,
+          searchOptions: searchState.options,         // 搜索选项
+          searchVersion: searchState.searchVersion,   // 搜索版本号
           onOutlineGenerated: (items) {
             debugPrint('[MainScreen] onOutlineGenerated: ${items.length} items');
             final headings = items.map((item) => Heading(
@@ -178,6 +211,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           },
           onLinkClicked: (url) {
             debugPrint('Link clicked: $url');
+          },
+          onSearchResults: (totalMatches, version) {  // 更新签名，添加 version 参数
+            debugPrint('[MainScreen] onSearchResults: $totalMatches, version: $version');
+            ref.read(searchProvider.notifier).setMatches(totalMatches, version: version);
           },
         );
 
@@ -205,4 +242,17 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         );
     }
   }
+}
+
+// Intent 类定义
+class _OpenFileIntent extends Intent {
+  const _OpenFileIntent();
+}
+
+class _ToggleSearchIntent extends Intent {
+  const _ToggleSearchIntent();
+}
+
+class _CloseSearchIntent extends Intent {
+  const _CloseSearchIntent();
 }
