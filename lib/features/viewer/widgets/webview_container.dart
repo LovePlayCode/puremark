@@ -767,10 +767,8 @@ function performSearch(query, options) {
     return;
   }
   
-  // 保存原始内容（如果还没保存）
-  if (!originalContent) {
-    originalContent = contentEl.innerHTML;
-  }
+  // 每次搜索都保存当前内容（clearSearch 已恢复为干净状态）
+  originalContent = contentEl.innerHTML;
   
   let pattern;
   if (options && options.useRegex) {
@@ -793,15 +791,79 @@ function performSearch(query, options) {
   const flags = (options && options.caseSensitive) ? 'g' : 'gi';
   
   try {
-    const regex = new RegExp('(' + pattern + ')', flags);
-    
+    const regex = new RegExp(pattern, flags);
     let matchCount = 0;
-    const newContent = contentEl.innerHTML.replace(regex, function(match) {
-      matchCount++;
-      return '<span class="search-highlight" data-match-index="' + matchCount + '">' + match + '</span>';
+    
+    // 使用 TreeWalker 遍历所有文本节点，避免修改 HTML 标签内容
+    const walker = document.createTreeWalker(
+      contentEl,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+    
+    const textNodes = [];
+    let node;
+    while (node = walker.nextNode()) {
+      if (node.nodeValue.trim()) {
+        textNodes.push(node);
+      }
+    }
+    
+    // 对每个文本节点进行搜索和高亮
+    textNodes.forEach(function(textNode) {
+      const text = textNode.nodeValue;
+      const matches = [];
+      let match;
+      
+      // 重置 regex 的 lastIndex
+      regex.lastIndex = 0;
+      
+      while ((match = regex.exec(text)) !== null) {
+        matches.push({
+          index: match.index,
+          length: match[0].length,
+          text: match[0]
+        });
+        // 防止无限循环（对于零长度匹配）
+        if (match[0].length === 0) {
+          regex.lastIndex++;
+        }
+      }
+      
+      if (matches.length === 0) return;
+      
+      // 从后向前替换，避免索引偏移问题
+      const parent = textNode.parentNode;
+      const fragment = document.createDocumentFragment();
+      let lastIndex = 0;
+      
+      matches.forEach(function(m) {
+        // 添加匹配前的文本
+        if (m.index > lastIndex) {
+          fragment.appendChild(document.createTextNode(text.substring(lastIndex, m.index)));
+        }
+        
+        // 添加高亮的匹配文本
+        matchCount++;
+        const span = document.createElement('span');
+        span.className = 'search-highlight';
+        span.setAttribute('data-match-index', matchCount);
+        span.textContent = m.text;
+        fragment.appendChild(span);
+        
+        lastIndex = m.index + m.length;
+      });
+      
+      // 添加最后剩余的文本
+      if (lastIndex < text.length) {
+        fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
+      }
+      
+      // 替换原文本节点
+      parent.replaceChild(fragment, textNode);
     });
     
-    contentEl.innerHTML = newContent;
     searchMatches = Array.from(document.querySelectorAll('.search-highlight'));
     
     console.log('[JS] performSearch found', searchMatches.length, 'matches');
