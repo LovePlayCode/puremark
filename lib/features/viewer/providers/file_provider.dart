@@ -39,11 +39,19 @@ class FileNotifier extends AsyncNotifier<FileState> {
   /// 1. 设置状态为 loading
   /// 2. 读取文件内容
   /// 3. 设置状态为 loaded 或 error
+  /// 骨架屏最少展示时间（毫秒），避免加载过快时用户看不到骨架屏。
+  static const int _minLoadingDisplayMs = 400;
+
   Future<void> openFile(String path) async {
-    // 设置加载状态
+    // 设置加载状态（此时 UI 会显示骨架屏）
     state = AsyncValue.data(FileState.loading(path));
 
     try {
+      // 确保骨架屏至少展示一段时间，便于用户看到加载反馈
+      await Future.delayed(
+        const Duration(milliseconds: _minLoadingDisplayMs),
+      );
+
       final file = File(path);
 
       // 检查文件是否存在

@@ -16,10 +16,11 @@ class LoadingState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return SingleChildScrollView(
       key: const Key('loadingStateContainer'),
       padding: const EdgeInsets.all(24),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 标题骨架屏
@@ -74,3 +75,4 @@ class LoadingState extends StatelessWidget {
     );
   }
 }
+

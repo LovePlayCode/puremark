@@ -1,0 +1,171 @@
+---
+description: Google Flutter 编码规范和 SOLID 设计原则
+globs: **/*.dart
+alwaysApply: false
+---
+
+# Flutter 编码规范与 SOLID 原则
+
+## Google Flutter/Dart 编码规范
+
+### 命名规范
+
+```dart
+// ✅ 类名：UpperCamelCase
+class MyWidget {}
+
+// ✅ 变量、函数、参数：lowerCamelCase
+final myVariable = 'value';
+void myFunction() {}
+
+// ✅ 常量：lowerCamelCase
+const defaultTimeout = Duration(seconds: 30);
+
+// ✅ 文件名：lowercase_with_underscores
+// my_widget.dart
+```
+
+### 格式化
+
+- 使用 `dart format` 自动格式化
+- 行宽限制 80 字符
+- 使用尾随逗号改善格式化
+
+```dart
+// ✅ 使用尾随逗号
+Widget build(BuildContext context) {
+  return Container(
+    padding: const EdgeInsets.all(16),
+    child: const Text('Hello'),  // 尾随逗号
+  );
+}
+```
+
+### 导入顺序
+
+```dart
+// 1. dart: 导入
+import 'dart:async';
+
+// 2. package: 导入
+import 'package:flutter/material.dart';
+
+// 3. 相对导入
+import '../utils/helpers.dart';
+```
+
+### 最佳实践
+
+```dart
+// ✅ 使用 const 构造函数
+const Text('Static text');
+
+// ✅ 优先使用 final
+final name = 'Flutter';
+
+// ✅ 使用类型推断
+final items = <String>[];  // 而非 List<String> items = <String>[];
+
+// ❌ 避免使用 var 声明可推断类型
+var name = 'Bad';  // 应使用 final
+```
+
+---
+
+## SOLID 设计原则
+
+### S - 单一职责原则 (Single Responsibility)
+
+每个类只负责一件事。
+
+```dart
+// ❌ 违反：一个类做太多事
+class UserManager {
+  void saveUser() {}
+  void sendEmail() {}
+  void generateReport() {}
+}
+
+// ✅ 遵循：拆分职责
+class UserRepository {
+  void saveUser() {}
+}
+
+class EmailService {
+  void sendEmail() {}
+}
+```
+
+### O - 开闭原则 (Open/Closed)
+
+对扩展开放，对修改关闭。
+
+```dart
+// ✅ 使用抽象类扩展功能
+abstract class Shape {
+  double area();
+}
+
+class Circle extends Shape {
+  final double radius;
+  Circle(this.radius);
+  
+  @override
+  double area() => 3.14 * radius * radius;
+}
+```
+
+### L - 里氏替换原则 (Liskov Substitution)
+
+子类可以替换父类使用。
+
+```dart
+// ✅ 子类行为与父类一致
+abstract class Bird {
+  void move();
+}
+
+class Sparrow extends Bird {
+  @override
+  void move() => fly();
+  void fly() {}
+}
+```
+
+### I - 接口隔离原则 (Interface Segregation)
+
+使用小而专注的接口。
+
+```dart
+// ❌ 过大的接口
+abstract class Worker {
+  void work();
+  void eat();
+  void sleep();
+}
+
+// ✅ 拆分为小接口
+abstract class Workable {
+  void work();
+}
+
+abstract class Eatable {
+  void eat();
+}
+```
+
+### D - 依赖倒置原则 (Dependency Inversion)
+
+依赖抽象，而非具体实现。
+
+```dart
+// ✅ 依赖抽象
+abstract class Repository {
+  Future<List<User>> getUsers();
+}
+
+class UserService {
+  final Repository repository;  // 依赖抽象
+  UserService(this.repository);
+}
+```

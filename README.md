@@ -1,16 +1,145 @@
-# puremark
+# PureMark · 项目特性介绍
 
-A new Flutter project.
+<p align="center">
+  <strong>沉浸式 Markdown 预览器</strong><br>
+  适用于 macOS 与 Windows 的桌面端应用
+</p>
 
-## Getting Started
+---
 
-This project is a starting point for a Flutter application.
+## 目录
 
-A few resources to get you started if this is your first Flutter project:
+- [概述](#概述)
+- [核心特性](#核心特性)
+- [功能模块](#功能模块)
+- [技术架构](#技术架构)
+- [设计理念](#设计理念)
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+---
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 概述
+
+**PureMark** 是一款基于 Flutter 构建的桌面端 Markdown 预览应用，专注于提供简洁、流畅的阅读与预览体验。支持多标签、大纲导航、全文搜索、专注模式等，并具备文件监听与主题定制能力。
+
+| 项目信息 | 说明 |
+|----------|------|
+| **平台** | macOS · Windows |
+| **技术栈** | Flutter 3.x · Dart 3.10+ |
+| **状态管理** | Riverpod |
+| **渲染方式** | WebView（Markdown → HTML 预览） |
+
+---
+
+## 核心特性
+
+### 多标签管理
+
+- 支持同时打开多个 `.md` / `.markdown` 文件
+- 标签栏可切换、关闭单个或全部标签
+- 与系统「打开方式」集成，可从 Finder / 资源管理器直接打开文件
+
+### 实时预览与文件监听
+
+- 使用 **WebView** 渲染 Markdown，所见即所得
+- **文件监听**：当外部编辑器修改文件时，自动检测变更并刷新预览
+- 可在设置中开关「自动刷新」
+
+### 大纲导航
+
+- 左侧 **大纲侧边栏** 解析文档标题层级（h1–h6）
+- 点击标题可快速跳转到对应位置
+- 支持在设置中默认显示/隐藏大纲
+
+### 全文搜索
+
+- 应用内 **搜索栏** 支持在当前文档中查找关键词
+- 高亮匹配结果，便于长文档定位
+
+### 专注模式
+
+- **全屏阅读**：隐藏侧边栏与工具栏，仅保留内容区域
+- 顶部 **阅读进度条** 显示当前滚动进度
+- 内容区域最大宽度限制（如 800px），提升长文阅读体验
+
+### 设置与个性化
+
+| 设置项 | 说明 | 可选范围 |
+|--------|------|----------|
+| **主题** | 浅色 / 深色 / 跟随系统 | `ThemeMode` |
+| **字号** | 预览区正文字号 | 12–24（默认 16） |
+| **自动刷新** | 文件变更时是否自动刷新预览 | 开/关 |
+| **显示大纲** | 是否默认显示大纲侧边栏 | 开/关 |
+
+设置持久化存储，下次启动自动恢复。
+
+### 快捷键与帮助
+
+- 提供 **快捷键面板**，集中展示常用操作（如打开文件、搜索、专注模式、设置等）
+- 便于键盘用户高效操作
+
+### 错误与状态处理
+
+- **文件被删除**：当正在预览的文件被删除时，给出明确提示并支持关闭标签
+- **图片加载失败**：对无法加载的图片显示占位与错误提示
+- **空状态 / 加载状态**：未打开文件时展示空状态；加载中展示骨架屏或加载指示
+
+---
+
+## 功能模块
+
+```
+puremark/lib/
+├── core/                    # 核心
+│   ├── services/            # 文件处理、系统「打开方式」等
+│   └── theme/               # 应用主题与色彩
+├── features/
+│   ├── errors/              # 错误 UI（文件删除、图片加载失败）
+│   ├── focus_mode/          # 专注模式
+│   ├── outline/             # 大纲模型、Provider、侧边栏
+│   ├── search/              # 搜索状态、Provider、搜索栏
+│   ├── settings/            # 设置状态、Provider、设置面板
+│   ├── shortcuts/           # 快捷键面板
+│   ├── tabs/                # 标签状态、Provider、标签栏
+│   └── viewer/              # 主界面、文件/主题/监听 Provider、WebView
+└── shared/                  # 共享
+    ├── services/            # 文件监听、本地存储
+    └── widgets/             # 上下文菜单、滚动条、骨架屏、同步提示、标题栏等
+```
+
+各功能按 **feature** 划分，便于维护与测试；核心与共享逻辑集中在 `core/` 与 `shared/`。
+
+---
+
+## 技术架构
+
+### 依赖概览
+
+| 类别 | 主要依赖 |
+|------|----------|
+| 状态管理 | `flutter_riverpod`、`riverpod_annotation` |
+| 窗口 | `window_manager` |
+| 预览 | `flutter_inappwebview` |
+| 文件 | `file_picker`、`watcher`、`path`、`path_provider` |
+| 持久化 | `shared_preferences` |
+| 数据类 | `freezed_annotation`、`json_annotation` |
+
+### 设计原则
+
+- **SOLID**：单一职责、开闭、里氏替换、接口隔离、依赖倒置
+- **Google Flutter/Dart 规范**：命名、格式化、导入顺序、const/final 使用
+- **测试**：核心主题、各 feature 的 Provider 与 Widget 配有单元/组件测试（如 `mocktail`）
+
+---
+
+## 设计理念
+
+- **沉浸式阅读**：专注模式与可控字号、主题，减少干扰
+- **多文档效率**：多标签 + 大纲 + 搜索，适合多文件与长文档
+- **与系统协作**：文件监听、系统「打开方式」、主题跟随系统
+- **一致性体验**：Material Design 3 与 macOS 风格结合，统一亮/暗色与组件样式
+
+---
+
+<p align="center">
+  <sub>PureMark · 让 Markdown 阅读更专注、更高效</sub>
+</p>

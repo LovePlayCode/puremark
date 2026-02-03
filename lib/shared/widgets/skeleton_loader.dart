@@ -118,24 +118,24 @@ class _SkeletonLoaderState extends State<SkeletonLoader>
       key: Key('skeleton_loader_${widget.type.name}'),
       animation: _animation,
       builder: (context, child) {
+        final t = _animation.value.clamp(0.0, 1.0);
+        final stop1 = (t - 0.35).clamp(0.0, 1.0);
+        final stop2 = t;
+        final stop3 = (t + 0.35).clamp(0.0, 1.0);
+        final s1 = stop1;
+        final s2 = stop2 > s1 ? stop2 : s1 + 0.05;
+        final s3 = stop3 > s2 ? stop3 : s2 + 0.05;
         return Container(
           width: width,
           height: height,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(_borderRadius),
+            color: baseColor,
             gradient: LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
-              colors: [
-                baseColor,
-                highlightColor,
-                baseColor,
-              ],
-              stops: [
-                (_animation.value - 0.3).clamp(0.0, 1.0),
-                _animation.value.clamp(0.0, 1.0),
-                (_animation.value + 0.3).clamp(0.0, 1.0),
-              ],
+              colors: [baseColor, highlightColor, baseColor],
+              stops: [s1, s2, s3],
             ),
           ),
         );

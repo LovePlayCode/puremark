@@ -151,12 +151,12 @@ void main() {
         // Act
         await tester.pumpWidget(buildTestWidget());
 
-        // Assert
-        final padding = tester.widget<Padding>(
+        // Assert - LoadingState 使用 SingleChildScrollView 的 padding
+        final scrollView = tester.widget<SingleChildScrollView>(
           find.byKey(const Key('loadingStateContainer')),
         );
         expect(
-          padding.padding,
+          scrollView.padding,
           equals(const EdgeInsets.all(24)),
         );
       });
