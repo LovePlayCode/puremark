@@ -146,7 +146,6 @@
           text: heading.textContent
         });
       });
-      
       // 通过 Flutter handler 发送大纲
       if (window.flutter_inappwebview) {
         window.flutter_inappwebview.callHandler('onOutlineGenerated', outline);
