@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
+import 'core/services/file_handler_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  FileHandlerService.initialize();
 
   // 初始化窗口管理器
   await windowManager.ensureInitialized();

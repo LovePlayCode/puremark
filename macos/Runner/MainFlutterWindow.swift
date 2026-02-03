@@ -10,6 +10,10 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
+    if let appDelegate = NSApp.delegate as? AppDelegate {
+      appDelegate.onFlutterViewControllerReady(flutterViewController)
+    }
+
     super.awakeFromNib()
   }
 }

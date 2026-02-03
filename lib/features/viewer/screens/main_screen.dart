@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 
+import '../../../core/services/file_handler_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../features/outline/models/heading.dart';
 import '../../../features/outline/providers/outline_provider.dart';
@@ -30,6 +33,30 @@ class MainScreen extends ConsumerStatefulWidget {
 class _MainScreenState extends ConsumerState<MainScreen> {
   bool _isOutlineVisible = true;
   final GlobalKey<WebViewContainerState> _webViewKey = GlobalKey<WebViewContainerState>();
+  StreamSubscription<String>? _fileOpenSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _fileOpenSubscription = FileHandlerService.subscribe(_handleFileOpenFromSystem);
+  }
+
+  @override
+  void dispose() {
+    _fileOpenSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _handleFileOpenFromSystem(String path) {
+    if (!mounted) return;
+    _openFileByPath(path);
+  }
+
+  /// 按路径打开文件（供文件选择器与「打开方式」共用）
+  Future<void> _openFileByPath(String filePath) async {
+    ref.read(tabsProvider.notifier).addTab(filePath);
+    await ref.read(fileProvider.notifier).openFile(filePath);
+  }
 
   Future<void> _openFile() async {
     final result = await FilePicker.platform.pickFiles(
@@ -38,9 +65,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     );
 
     if (result != null && result.files.single.path != null) {
-      final filePath = result.files.single.path!;
-      ref.read(tabsProvider.notifier).addTab(filePath);
-      await ref.read(fileProvider.notifier).openFile(filePath);
+      await _openFileByPath(result.files.single.path!);
     }
   }
 
@@ -103,10 +128,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
     return Shortcuts(
       shortcuts: <ShortcutActivator, Intent>{
-        const SingleActivator(LogicalKeyboardKey.keyO, meta: true): const _OpenFileIntent(),
-        const SingleActivator(LogicalKeyboardKey.keyF, meta: true): const _ToggleSearchIntent(),
-        const SingleActivator(LogicalKeyboardKey.comma, meta: true): const _OpenSettingsIntent(),
-        const SingleActivator(LogicalKeyboardKey.escape): const _CloseSearchIntent(),
+        SingleActivator(LogicalKeyboardKey.keyO, meta: true): _OpenFileIntent(),
+        SingleActivator(LogicalKeyboardKey.keyF, meta: true): _ToggleSearchIntent(),
+        SingleActivator(LogicalKeyboardKey.comma, meta: true): _OpenSettingsIntent(),
+        SingleActivator(LogicalKeyboardKey.escape): _CloseSearchIntent(),
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
