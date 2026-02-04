@@ -338,7 +338,12 @@ class WebViewContainerState extends State<WebViewContainer> {
     final textSecondary = isDark ? darkTextSecondary : lightTextSecondary;
     final borderPrimary = isDark ? darkBorderPrimary : lightBorderPrimary;
     final accentPrimary = isDark ? darkAccentPrimary : lightAccentPrimary;
-    
+    // 选中菜单样式（对齐 Flutter ContextMenu）
+    final selectionMenuBg =
+        isDark ? 'rgba(42, 42, 44, 0.8)' : 'rgba(234, 234, 236, 0.8)';
+    final selectionMenuHover =
+        isDark ? 'rgba(36, 36, 38, 0.5)' : 'rgba(245, 245, 247, 0.5)';
+
     return '''
 * {
   margin: 0;
@@ -354,6 +359,8 @@ class WebViewContainerState extends State<WebViewContainer> {
   --text-secondary: $textSecondary;
   --border-primary: $borderPrimary;
   --accent-primary: $accentPrimary;
+  --selection-menu-bg: $selectionMenuBg;
+  --selection-menu-hover: $selectionMenuHover;
 }
 
 html, body {
@@ -509,6 +516,38 @@ img {
   background-color: rgba(255, 152, 0, 0.6);
   outline: 2px solid #FF9800;
 }
+
+/* 选中段落右键菜单（对齐 Flutter ContextMenu） */
+.selection-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 150px;
+  max-width: 250px;
+  border-radius: 12px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: var(--selection-menu-bg);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+.selection-menu-item {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+.selection-menu-item:hover {
+  background: var(--selection-menu-hover);
+}
+.selection-menu-item svg {
+  flex-shrink: 0;
+  margin-right: 8px;
+  color: var(--text-secondary);
+}
 ''';
   }
 
@@ -606,6 +645,83 @@ function handleLinkClick(event, url) {
   }
 }
 
+// 选中段落右键菜单（WebView 内实现，样式对齐 Flutter ContextMenu）
+var selectionMenuEl = null;
+var selectionMenuCloseHandler = null;
+
+function closeSelectionMenu() {
+  if (selectionMenuCloseHandler) {
+    document.removeEventListener('click', selectionMenuCloseHandler);
+    selectionMenuCloseHandler = null;
+  }
+  if (selectionMenuEl && selectionMenuEl.parentNode) {
+    selectionMenuEl.parentNode.removeChild(selectionMenuEl);
+    selectionMenuEl = null;
+  }
+}
+
+function showSelectionMenu(selectedText, clientX, clientY) {
+  closeSelectionMenu();
+  var menu = document.createElement('div');
+  menu.className = 'selection-menu';
+  menu.style.left = clientX + 'px';
+  menu.style.top = clientY + 'px';
+  menu.addEventListener('click', function(e) {
+    e.stopPropagation();
+  });
+  var copySvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
+  var copyItem = document.createElement('div');
+  copyItem.className = 'selection-menu-item';
+  copyItem.innerHTML = copySvg + '<span>复制</span>';
+  copyItem.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(selectedText).catch(function() {
+        document.execCommand('copy');
+      });
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = selectedText;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    closeSelectionMenu();
+  });
+  menu.appendChild(copyItem);
+  document.body.appendChild(menu);
+  selectionMenuEl = menu;
+  var rect = menu.getBoundingClientRect();
+  var w = window.innerWidth;
+  var h = window.innerHeight;
+  var left = clientX;
+  var top = clientY;
+  if (left + rect.width > w) left = w - rect.width - 8;
+  if (top + rect.height > h) top = h - rect.height - 8;
+  if (left < 8) left = 8;
+  if (top < 8) top = 8;
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+  selectionMenuCloseHandler = function() {
+    closeSelectionMenu();
+  };
+  setTimeout(function() {
+    document.addEventListener('click', selectionMenuCloseHandler);
+  }, 0);
+}
+
+document.addEventListener('contextmenu', function(e) {
+  var sel = window.getSelection();
+  var selectedText = sel ? sel.toString().trim() : '';
+  if (selectedText.length > 0) {
+    e.preventDefault();
+    showSelectionMenu(selectedText, e.clientX, e.clientY);
+  }
+});
+
 async function setTheme(isDark) {
   const root = document.documentElement;
   if (isDark) {
@@ -616,6 +732,8 @@ async function setTheme(isDark) {
     root.style.setProperty('--text-secondary', '#6E6E70');
     root.style.setProperty('--border-primary', '#3A3A3C');
     root.style.setProperty('--accent-primary', '#8B9EFF');
+    root.style.setProperty('--selection-menu-bg', 'rgba(42, 42, 44, 0.8)');
+    root.style.setProperty('--selection-menu-hover', 'rgba(36, 36, 38, 0.5)');
   } else {
     root.style.setProperty('--bg-primary', '#FFFFFF');
     root.style.setProperty('--bg-surface', '#F5F5F5');
@@ -624,6 +742,8 @@ async function setTheme(isDark) {
     root.style.setProperty('--text-secondary', '#6E6E70');
     root.style.setProperty('--border-primary', '#E0E0E0');
     root.style.setProperty('--accent-primary', '#5B6BFF');
+    root.style.setProperty('--selection-menu-bg', 'rgba(234, 234, 236, 0.8)');
+    root.style.setProperty('--selection-menu-hover', 'rgba(245, 245, 247, 0.5)');
   }
   document.body.style.backgroundColor = isDark ? '#1A1A1C' : '#FFFFFF';
   
