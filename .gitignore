@@ -12,6 +12,15 @@
 .swiftpm/
 migrate_working_dir/
 
+# CodeBuddy / IDE Extensions
+.codebuddy/
+.cursor/
+.claude/
+.agent/
+.agents/
+
+# Landing page (separate repo)
+landing-page/
 # IntelliJ related
 *.iml
 *.ipr
