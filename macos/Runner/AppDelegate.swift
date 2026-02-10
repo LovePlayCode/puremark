@@ -43,10 +43,10 @@ class AppDelegate: FlutterAppDelegate {
   }
 
   /// 统一文件处理：仅接受 .md/.markdown，去重后缓存或立即通过 Channel 发送
-  private func handleOpenFile(_ filename: String) {
+  func handleOpenFile(_ filename: String) {
     let url = URL(fileURLWithPath: filename)
     let ext = url.pathExtension.lowercased()
-    guard ext == "md" || ext == "markdown" else { return }
+    guard ext == "md" || ext == "markdown" || ext == "mdown" || ext == "mkd" else { return }
     let path = url.path
     if pendingFiles.contains(path) { return }
     pendingFiles.append(path)
