@@ -33,6 +33,7 @@ class MainScreen extends ConsumerStatefulWidget {
 class _MainScreenState extends ConsumerState<MainScreen> {
   bool _isOutlineVisible = true;
   final GlobalKey<WebViewContainerState> _webViewKey = GlobalKey<WebViewContainerState>();
+  final FocusNode _mainFocusNode = FocusNode();
   StreamSubscription<String>? _fileOpenSubscription;
 
   @override
@@ -44,6 +45,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   @override
   void dispose() {
     _fileOpenSubscription?.cancel();
+    _mainFocusNode.dispose();
     super.dispose();
   }
 
@@ -77,7 +79,14 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   void _toggleSearch() {
     debugPrint('[MainScreen] _toggleSearch called');
+    final isCurrentlyVisible = ref.read(searchProvider).isVisible;
     ref.read(searchProvider.notifier).toggleVisibility();
+    // 关闭搜索栏后，将焦点还给主 Focus 节点，以确保键盘快捷键继续工作
+    if (isCurrentlyVisible) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _mainFocusNode.requestFocus();
+      });
+    }
   }
 
   void _openSettings() {
@@ -157,6 +166,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
             onInvoke: (_) {
               if (searchState.isVisible) {
                 ref.read(searchProvider.notifier).toggleVisibility();
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _mainFocusNode.requestFocus();
+                });
               }
               return null;
             },
@@ -167,6 +179,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               ? AppColors.darkBgPrimary
               : AppColors.lightBgPrimary,
           body: Focus(
+            focusNode: _mainFocusNode,
             autofocus: true,
             child: Column(
             children: [
@@ -180,7 +193,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                 },
                 onTabClosed: (tab) {
                   ref.read(tabsProvider.notifier).closeTab(tab.id);
-                  if (tabsState.tabs.length <= 1) {
+                  ref.read(fileProvider.notifier).removeCacheForFile(tab.filePath);
+                  final newState = ref.read(tabsProvider);
+                  if (newState.activeTab != null) {
+                    ref.read(fileProvider.notifier).openFile(newState.activeTab!.filePath);
+                  } else {
                     ref.read(fileProvider.notifier).closeFile();
                   }
                 },
@@ -213,11 +230,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                 child: Row(
                   children: [
                     // 大纲侧边栏（仅在有文件加载时显示）
-                    if (_isOutlineVisible && _hasFileLoaded(fileStateAsync))
+                    if (_hasFileLoaded(fileStateAsync))
                       OutlineSidebar(
                         headings: outlineState.headings,
                         activeHeadingId: outlineState.activeHeadingId,
-                        isCollapsed: false,
+                        isCollapsed: !_isOutlineVisible,
                         onToggleCollapse: _toggleOutline,
                         onHeadingTap: (heading) {
                           ref.read(outlineProvider.notifier).setActiveHeading(heading.id);

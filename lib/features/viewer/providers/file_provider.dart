@@ -25,7 +25,11 @@ final fileProvider = AsyncNotifierProvider<FileNotifier, FileState>(() {
 /// 文件状态 Notifier。
 ///
 /// 管理文件的打开、内容更新和关闭操作。
+/// 内部维护已打开文件的内容缓存，切换 tab 时可秒开。
 class FileNotifier extends AsyncNotifier<FileState> {
+  /// 文件内容缓存：filePath -> content
+  final Map<String, String> _contentCache = {};
+
   @override
   Future<FileState> build() async {
     return FileState.empty();
@@ -35,15 +39,24 @@ class FileNotifier extends AsyncNotifier<FileState> {
   ///
   /// [path] 文件路径
   ///
-  /// 打开过程：
-  /// 1. 设置状态为 loading
-  /// 2. 读取文件内容
-  /// 3. 设置状态为 loaded 或 error
-  /// 骨架屏最少展示时间（毫秒），避免加载过快时用户看不到骨架屏。
+  /// 如果文件内容已在缓存中，直接使用缓存，不显示骨架屏。
+  /// 否则走完整加载流程：loading -> 读取文件 -> loaded / error。
+  /// 骨架屏最少展示时间（毫秒），避免首次加载过快时用户看不到加载反馈。
   static const int _minLoadingDisplayMs = 400;
 
   Future<void> openFile(String path) async {
-    // 设置加载状态（此时 UI 会显示骨架屏）
+    // 如果缓存中已有该文件内容，直接使用，跳过骨架屏
+    if (_contentCache.containsKey(path)) {
+      state = AsyncValue.data(
+        FileState.loaded(
+          filePath: path,
+          content: _contentCache[path]!,
+        ),
+      );
+      return;
+    }
+
+    // 首次加载：设置加载状态（此时 UI 会显示骨架屏）
     state = AsyncValue.data(FileState.loading(path));
 
     try {
@@ -68,6 +81,9 @@ class FileNotifier extends AsyncNotifier<FileState> {
       // 读取文件内容
       final content = await file.readAsString();
 
+      // 写入缓存
+      _contentCache[path] = content;
+
       // 设置加载完成状态
       state = AsyncValue.data(
         FileState.loaded(
@@ -90,11 +106,16 @@ class FileNotifier extends AsyncNotifier<FileState> {
   ///
   /// [content] 新的文件内容
   ///
-  /// 仅当文件处于 loaded 状态时有效。
+  /// 仅当文件处于 loaded 状态时有效。同时更新缓存。
   void setContent(String content) {
     final currentState = state.valueOrNull;
     if (currentState == null || currentState.status != FileStatus.loaded) {
       return;
+    }
+
+    // 同步更新缓存
+    if (currentState.filePath != null) {
+      _contentCache[currentState.filePath!] = content;
     }
 
     state = AsyncValue.data(
@@ -107,5 +128,12 @@ class FileNotifier extends AsyncNotifier<FileState> {
   /// 将状态重置为 empty。
   void closeFile() {
     state = AsyncValue.data(FileState.empty());
+  }
+
+  /// 从缓存中移除指定文件。
+  ///
+  /// 在 tab 关闭时调用，释放不再需要的缓存。
+  void removeCacheForFile(String path) {
+    _contentCache.remove(path);
   }
 }
